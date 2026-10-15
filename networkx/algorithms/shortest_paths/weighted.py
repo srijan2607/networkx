@@ -1269,7 +1269,7 @@ def bellman_ford_predecessor_and_distance(
         raise nx.NodeNotFound(f"Node {source} is not found in the graph")
     weight = _weight_function(G, weight)
     for u in nx.nodes_with_selfloops(G):
-        loop_weight = weight(u, u, G[u][u])
+        loop_weight = weight(u, u, G._adj[u][u])
         if loop_weight is not None and loop_weight < 0:
             raise nx.NetworkXUnbounded("Negative cycle detected.")
 
@@ -2042,7 +2042,7 @@ def goldberg_radzik(G, source, weight="weight"):
         raise nx.NodeNotFound(f"Node {source} is not found in the graph")
     weight = _weight_function(G, weight)
     for u in nx.nodes_with_selfloops(G):
-        loop_weight = weight(u, u, G[u][u])
+        loop_weight = weight(u, u, G._adj[u][u])
         if loop_weight is not None and loop_weight < 0:
             raise nx.NetworkXUnbounded("Negative cycle detected.")
 

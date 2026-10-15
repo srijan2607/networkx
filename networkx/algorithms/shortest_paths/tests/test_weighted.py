@@ -1070,6 +1070,27 @@ class TestHiddenEdges:
         _, dist = algorithm(G, 0, weight=weight)
         assert dist == {0: 0, 1: 2}
 
+    @pytest.mark.parametrize(
+        "algorithm", [nx.bellman_ford_predecessor_and_distance, nx.goldberg_radzik]
+    )
+    @pytest.mark.parametrize("graph_type", [nx.MultiGraph, nx.MultiDiGraph])
+    @pytest.mark.parametrize("extra_node", [False, True])
+    def test_multigraph_selfloop_dictionary(self, algorithm, graph_type, extra_node):
+        G = graph_type()
+        G.add_edge(0, 0, key="negative", weight=-3)
+        G.add_edge(0, 0, key="positive", weight=2)
+        if extra_node:
+            G.add_edge(0, 1, weight=4)
+
+        def weight(u, v, data):
+            # Dictionary operations must work on the complete adjacency payload.
+            edge_data = dict.copy(data)
+            assert data is G._adj[u][v]
+            return max(d["weight"] for d in edge_data.values())
+
+        _, dist = algorithm(G, 0, weight=weight)
+        assert dist == ({0: 0, 1: 4} if extra_node else {0: 0})
+
     def test_negative_cycle_with_hidden_missing_weights(self):
         G = nx.DiGraph()
         G.add_weighted_edges_from([(0, 1, -2), (1, 0, 1)])
