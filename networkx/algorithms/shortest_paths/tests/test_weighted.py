@@ -355,6 +355,98 @@ class TestWeightedPath(WeightedTestBase):
         d.add_edge("b", "a", w=-1)
         assert nx.negative_edge_cycle(d, weight="w")
 
+    @pytest.mark.parametrize("graph_type", [nx.Graph, nx.MultiGraph])
+    @pytest.mark.parametrize("heuristic", [False, True])
+    @pytest.mark.parametrize("reverse_weight", [0, 1, 2, None])
+    @pytest.mark.parametrize("negative_arc", [(0, 1), (1, 0)])
+    def test_negative_edge_cycle_asymmetric_weight(
+        self, graph_type, heuristic, reverse_weight, negative_arc
+    ):
+        G = graph_type([(0, 1)])
+        u, v = negative_arc
+
+        def weight(a, b, data):
+            if (a, b) == (u, v):
+                return -1
+            if (a, b) == (v, u):
+                return reverse_weight
+            return 1
+
+        # A negative traversal alone is not a cycle: its return traversal
+        # must be visible and their total weight must be negative.
+        expected = reverse_weight is not None and reverse_weight < 1
+        assert nx.negative_edge_cycle(G, weight=weight, heuristic=heuristic) == expected
+        if expected:
+            with pytest.raises(nx.NetworkXUnbounded):
+                nx.bellman_ford_predecessor_and_distance(
+                    G, u, weight=weight, heuristic=heuristic
+                )
+        else:
+            assert nx.bellman_ford_predecessor_and_distance(
+                G, u, weight=weight, heuristic=heuristic
+            )[1] == {u: 0, v: -1}
+            expected_dist = {v: 0}
+            if reverse_weight is not None:
+                expected_dist[u] = reverse_weight
+            assert (
+                nx.bellman_ford_predecessor_and_distance(
+                    G, v, weight=weight, heuristic=heuristic
+                )[1]
+                == expected_dist
+            )
+
+    @pytest.mark.parametrize("graph_type", [nx.Graph, nx.MultiGraph])
+    @pytest.mark.parametrize("heuristic", [False, True])
+    @pytest.mark.parametrize("hide_arc", [False, True])
+    def test_negative_edge_cycle_asymmetric_triangle(
+        self, graph_type, heuristic, hide_arc
+    ):
+        G = graph_type([(0, 1), (1, 2), (2, 0)])
+        forward = {(0, 1), (1, 2), (2, 0)}
+
+        def weight(u, v, data):
+            if hide_arc and (u, v) == (2, 0):
+                return None
+            return -2 if (u, v) in forward else 3
+
+        # Every two-step cycle costs 1, but the forward triangle costs -6.
+        # Hiding its last traversal leaves only nonnegative cycles.
+        assert nx.negative_edge_cycle(G, weight=weight, heuristic=heuristic) == (
+            not hide_arc
+        )
+
+    @pytest.mark.parametrize(
+        "graph_type", [nx.Graph, nx.DiGraph, nx.MultiGraph, nx.MultiDiGraph]
+    )
+    @pytest.mark.parametrize("heuristic", [False, True])
+    @pytest.mark.parametrize("loop_weight", [-1, 0, None])
+    def test_negative_edge_cycle_original_graph(
+        self, graph_type, heuristic, loop_weight
+    ):
+        G = graph_type()
+        G.add_node("isolated")
+        G.add_edge("loop", "loop", weight=loop_weight)
+        original = G.copy()
+
+        def weight(u, v, data):
+            assert nx.utils.graphs_equal(G, original)
+            assert data is G._adj[u][v]
+            if G.is_multigraph():
+                return min(d["weight"] for d in data.values())
+            return data["weight"]
+
+        assert nx.negative_edge_cycle(G, weight=weight, heuristic=heuristic) == (
+            loop_weight == -1
+        )
+        assert nx.utils.graphs_equal(G, original)
+
+        def invalid_weight(u, v, data):
+            raise ValueError("callback failure")
+
+        with pytest.raises(ValueError, match="callback failure"):
+            nx.negative_edge_cycle(G, weight=invalid_weight, heuristic=heuristic)
+        assert nx.utils.graphs_equal(G, original)
+
     def test_weight_function(self):
         """Tests that a callable weight is interpreted as a weight
         function instead of an edge attribute.
